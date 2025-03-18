@@ -34,10 +34,6 @@ You can add options to executable code like this
 ```
 
 The `echo: false` option disables the printing of code (only output is displayed).
-<<<<<<< HEAD
-=======
-
-Hello this is Liv
 
 Hellooooo
->>>>>>> 458cb80c15a56b78c6c0880e41e33414e5e6d36a
+

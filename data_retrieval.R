@@ -16,7 +16,6 @@ head(nokeur_data)
 closing_prices <- Cl(NOKEUR.X)
 
 
-
 ggplot(nokeur_data, aes(x = Date, y = NOKEUR.X.Close)) +
   geom_line() + 
   labs(title = "NOK/EUR Exchange Rate", x = "Date", y = "Exchange Rate")

@@ -9,10 +9,9 @@ editor: visual
 Install package if not already installed.
 
 ```{r}
-install.packages("yahoofinancer")
-```
-
-```{}
+library(quantmod)
+quantmod::getSymbols('EURUSD=X')
+'EURUSD=X' <- na.omit('EURUSD=X')
 ```
 
 ## Quarto

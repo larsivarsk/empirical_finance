@@ -4,6 +4,17 @@ format: html
 editor: visual
 ---
 
+## Connecting to the Yahoo finance API
+
+Install package if not already installed.
+
+```{r}
+install.packages("yahoofinancer")
+```
+
+```{}
+```
+
 ## Quarto
 
 Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.

@@ -1,0 +1,54 @@
+# Laste inn nødvendige biblioteker
+library(quantmod)
+library(ggplot2)
+library(tseries)
+library(rugarch)
+
+# Hente NOK/EUR valutakurs fra Yahoo Finance
+assign("nokeur_data", getSymbols("NOKEUR=X", src = "yahoo", from = "2015-01-01", to = "2025-01-01", auto.assign = FALSE))
+
+# Konverter til dataframe
+nokeur_data <- data.frame(Date = index(`NOKEUR=X`), coredata(`NOKEUR=X`))
+nokeur_data <- na.omit(nokeur_data)
+
+# Se på de første radene
+head(nokeur_data)
+
+# Ekstraher sluttpriser (closing prices)
+closing_prices <- nokeur_data$NOKEUR.X.Close
+closing_prices <- na.omit(closing_prices)
+
+# Plot sluttpriser
+ggplot(nokeur_data, aes(x = Date, y = NOKEUR.X.Close)) +
+  geom_line() + 
+  labs(title = "NOK/EUR Exchange Rate", x = "Date", y = "Exchange Rate")
+
+# ADF-test for stasjonaritet
+adf.test(closing_prices, alternative = "stationary")
+
+# -------------------------------
+# GARCH-MODELL FOR VOLATILITET
+# -------------------------------
+
+# Definer GARCH-spesifikasjon direkte på priser (ikke log-returns)
+garch_spec <- ugarchspec(
+  variance.model = list(model = "sGARCH", garchOrder = c(1, 1)), # GARCH(1,1)
+  mean.model = list(armaOrder = c(0, 0), include.mean = TRUE), # Ingen ARMA-komponenter
+  distribution.model = "norm" # Normalfordeling
+)
+
+# Tilpass GARCH-modellen direkte på prisdataene
+garch_fit <- ugarchfit(spec = garch_spec, data = closing_prices, solver = "hybrid")
+
+# Skriv ut sammendrag av modellen
+summary(garch_fit)
+garch_fit
+
+# Prediker volatilitet de neste 30 dagene
+garch_forecast <- ugarchforecast(garch_fit, n.ahead = 30)
+
+# Plot prediksjon av volatilitet
+plot(garch_forecast, which = 3)
+
+
+

@@ -12,6 +12,7 @@ getSymbols("NOKEUR=X", src = "yahoo", from = "2015-01-01", to = "2025-01-01")
 nokeur_data <- data.frame(Date = index(`NOKEUR=X`), coredata(`NOKEUR=X`))
 nokeur_data <- na.omit(nokeur_data)
 colnames(nokeur_data) <- c("Date", "Open", "High", "Low", "Close", "Volume", "Adjusted")
+#nokeur_data %>% filter(Date >= "2025-02-14" & Date <= "2025-02-17")
 
 # Plot exchange rate
 ggplot(nokeur_data, aes(x = Date, y = Close)) +
@@ -41,7 +42,7 @@ acf(nokeur_data$Log_Returns, main = "ACF of Log Returns")
 pacf(nokeur_data$Log_Returns, main = "PACF of Log Returns")
 
 # Build ARIMA model based on ACF/PACF
-arima_model <- auto.arima(nokeur_data$Close)
+arima_model <- auto.arima(nokeur_data$Log_Returns)
 summary(arima_model)
 
 # Forecast ARIMA
@@ -79,16 +80,16 @@ garch_spec <- ugarchspec(
 
 # Calculate log returns 
 
-log_returns <- nokeur_data$Log_Returns
+#log_returns <- nokeur_data$Log_Returns
 
 
 # Fitting the GARCH model to the data
-garch_fit <- ugarchfit(spec = garch_spec, data = log_returns, solver = "hybrid")
+garch_fit <- ugarchfit(spec = garch_spec, data = nokeur_data$Log_Returns, solver = "hybrid")
 garch_fit
 
 # Forecast volatility for the next 30 days
-garch_forecast <- ugarchforecast(garch_fit, n.ahead = 30)
-plot(garch_forecast, which = 3)
+garch_forecast <- ugarchforecast(garch_fit, n.ahead = 31)
+plot(garch_forecast, which = 2)
 # which = 3 plots the predicted volatility (standard deviation) over time.
 
 

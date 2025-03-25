@@ -99,4 +99,4 @@ ljung_box_results <- data.frame(
 ljung_box_results
 ```
 
-To statistically confirm volatility clustering, the **Ljung-Box test** is performed on squared log returns. The null hypothesis (H₀) assumes no autocorrelation, meaning no volatility clustering. Since all p-values are close to zero, we reject H₀, confirming that volatility clusters over time. Therefore, models designed for capturing volatility, such as **GARCH, TARCH, or FIGARCH**, are more appropriate for forecasting short-term fluctuations.
+To statistically confirm volatility clustering, the **Ljung-Box test** is performed on squared log returns. The null hypothesis (H₀) assumes no autocorrelation, meaning no volatility clustering. Since all p-values are close to zero, we reject H₀, confirming that volatility clusters over time. Therefore, models designed for capturing volatility, such as **GARCH, TARCH, or FIGARCH**, are more appropriate for forecasting short-term fluctuations. 

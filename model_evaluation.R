@@ -125,29 +125,8 @@ print(aic_bic_comparison)
 
 
 #----------------------------------------
-# Comparing ARIMA and GARCH using ACF and PACF
-# Load required library
-library(ggplot2)
-
-# Get residuals from ARIMA and GARCH models
-arima_resid <- residuals(arima_model)
-garch_resid <- residuals(garch_fit)
-
-# Plot ACF and PACF for ARIMA residuals
-par(mfrow = c(2, 2))  # 2x2 layout for plots
-
-acf(arima_resid, main = "ACF of ARIMA Residuals")
-pacf(arima_resid, main = "PACF of ARIMA Residuals")
-
-# Plot ACF and PACF for GARCH residuals
-acf(garch_resid, main = "ACF of GARCH Residuals")
-pacf(garch_resid, main = "PACF of GARCH Residuals")
-
-# Reset plotting layout
-par(mfrow = c(1, 1))
-
-#----------------------------------------
 # Using RMSE and MAE for model performance
+
 # RMSE penalizes large errors more than MAE due to squaring the differences before averaging.
 # It is useful when large deviations should be weighted more heavily
 # MAE gives equal weight to all errors. It is more robust to outliers.
@@ -270,23 +249,6 @@ print(aic_bic_comparison_fi_ta)
 # Output shows that TARCH has both the lowest AIC and BIC
 
 
-#----------------------------------------
-# ACF AND PACF
-
-# Get residuals from fiGARCH and TARCH models
-figarch_resid <- residuals(garch_fit_fi)
-tarch_resid <- residuals(garch_fit_ta)
-
-# Plot ACF and PACF
-par(mfrow = c(2, 2))  # 2x2 layout for plots
-
-acf(figarch_resid, main = "ACF of fiGARCH Residuals")
-pacf(figarch_resid, main = "PACF of fiGARCH Residuals")
-acf(tarch_resid, main = "ACF of TARCH Residuals")
-pacf(tarch_resid, main = "PACF of TARCH Residuals")
-
-par(mfrow = c(1, 1)) # Reset plotting layout
-
 
 #----------------------------------------
 # Computing RMSE and MAE
@@ -358,40 +320,6 @@ aic_bic_comparison_all <- data.frame(
 )
 
 print(aic_bic_comparison_all)
-
-# OUTPUT RANKING (lowest criteria values to highest): 
-# 1. TARCH  
-# 2. fiGARCH
-# 3. GARCH
-# 4. ARIMA
-
-#----------------------------------------
-# ACF AND PACF PLOTS FOR ALL MODELS
-
-# Residuals
-residuals_list_all <- list(
-  "ARIMA" = arima_resid,
-  "GARCH" = garch_resid,
-  "fiGARCH" = figarch_resid,
-  "TARCH" = tarch_resid
-)
-
-# Creating ACF and PACF plots
-acf_plots <- list()
-pacf_plots <- list()
-
-for (name in names(residuals_list_all)) {
-  acf_plots[[name]] <- ggAcf(residuals_list_all[[name]]) + ggtitle(paste("ACF -", name))
-  pacf_plots[[name]] <- ggPacf(residuals_list_all[[name]]) + ggtitle(paste("PACF -", name))
-}
-
-# Arranging all plots in a 2x4 grid
-grid.arrange(
-  grobs = c(acf_plots, pacf_plots),
-  ncol = 4
-)
-
-
 
 #----------------------------------------
 # RMSE AND MAE FOR ALL MODELS

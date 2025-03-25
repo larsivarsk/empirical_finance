@@ -61,7 +61,7 @@ A time-series plot of the NOK/EUR exchange rate shows trends and fluctuations ov
 adf.test(nokeur_data$Log_Returns, alternative = "stationary")
 ```
 
-To formally test stationarity, the **Augmented Dickey-Fuller (ADF) test** is conducted. The null hypothesis (H₀) assumes that time series is non-stationary, while the alternative hypothesis (H₁) assumes stationarity. Since the p-value of the ADF test is less than 0.05, we reject H₀ and conclude that log returns are stationary, making them suitable for time-series modeling.
+To formally test stationarity, the **Augmented Dickey-Fuller (ADF) test** is conducted. The null hypothesis (H???) assumes that time series is non-stationary, while the alternative hypothesis (H???) assumes stationarity. Since the p-value of the ADF test is less than 0.05, we reject H??? and conclude that log returns are stationary, making them suitable for time-series modeling.
 
 ```{r}
 # ACF and PACF of Log Returns
@@ -99,4 +99,4 @@ ljung_box_results <- data.frame(
 ljung_box_results
 ```
 
-To statistically confirm volatility clustering, the **Ljung-Box test** is performed on squared log returns. The null hypothesis (H₀) assumes no autocorrelation, meaning no volatility clustering. Since all p-values are close to zero, we reject H₀, confirming that volatility clusters over time. Therefore, models designed for capturing volatility, such as **GARCH, TARCH, or FIGARCH**, are more appropriate for forecasting short-term fluctuations. 
+To statistically confirm volatility clustering, the **Ljung-Box test** is performed on squared log returns. The null hypothesis (H???) assumes no autocorrelation, meaning no volatility clustering. Since all p-values are close to zero, we reject H???, confirming that volatility clusters over time. Therefore, models designed for capturing volatility, such as **GARCH, TARCH, or FIGARCH**, are more appropriate for forecasting short-term fluctuations.

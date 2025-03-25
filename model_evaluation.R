@@ -95,21 +95,22 @@ plot(garch_forecast, which = 3)
 
 
 
-
-# MODEL EVALUATION PART - METRICS
+#----------------------------------------
+# MODEL EVALUATION PART - LIV
+#----------------------------------------
 # Comparing ARIMA and GARCH using AIC and BIC 
 
-# Extract AIC and BIC for ARIMA
-arima_aic <- AIC(arima_model)
-arima_bic <- BIC(arima_model)
-
-# Infocriteria(garch_fit) reports values per observation as default
-# Thus finding the number of observations in order to scale AIC and BIC 
+# AIC() and BIC() does not divide by sample size T
+# Thus finding the number of observations in order to downscale AIC and BIC 
 n_obs <- length(nokeur_data$Log_Returns)
 
+# Extract AIC and BIC for ARIMA
+arima_aic <- AIC(arima_model) / n_obs
+arima_bic <- BIC(arima_model) / n_obs
+
 garch_criteria <- infocriteria(garch_fit)
-garch_aic <- as.numeric(garch_criteria[1]) * n_obs
-garch_bic <- as.numeric(garch_criteria[2]) * n_obs
+garch_aic <- as.numeric(garch_criteria[1]) 
+garch_bic <- as.numeric(garch_criteria[2]) 
 
 aic_bic_comparison <- data.frame(
   Model = c("ARIMA", "GARCH"),
@@ -123,6 +124,7 @@ print(aic_bic_comparison)
 # => suggesting that the GARCH model fits best in this case
 
 
+#----------------------------------------
 # Comparing ARIMA and GARCH using ACF and PACF
 # Load required library
 library(ggplot2)
@@ -144,8 +146,12 @@ pacf(garch_resid, main = "PACF of GARCH Residuals")
 # Reset plotting layout
 par(mfrow = c(1, 1))
 
+#----------------------------------------
+# Using RMSE and MAE for model performance
+# RMSE penalizes large errors more than MAE due to squaring the differences before averaging.
+# It is useful when large deviations should be weighted more heavily
+# MAE gives equal weight to all errors. It is more robust to outliers.
 
-# RMSE and MAE for model performance
 library(Metrics)
 
 # Extracting actual values
@@ -174,8 +180,250 @@ rmse_mae_comparison <- data.frame(
 
 print(rmse_mae_comparison)
 
-# Output shows that ARIMA slightly outperforms GARCH in terms of prediction accuracy
+# ARIMA slightly outperforms GARCH in terms of prediction accuracy
 # However, the difference is so small that it might not be practically significant
-# Also, GARCH is designed to model volatility rather than returns, so RMSE/MAE might not fully capture its strength
 
+#Visualization of RMSE and MAE
+# Load necessary library
+library(ggplot2)
+
+# Reshape data for plotting
+rmse_mae_long <- tidyr::pivot_longer(rmse_mae_comparison, cols = c(RMSE, MAE), names_to = "Metric", values_to = "Value")
+
+# Bar plot comparing RMSE and MAE
+ggplot(rmse_mae_long, aes(x = Model, y = Value, fill = Metric)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "RMSE and MAE Comparison for ARIMA and GARCH", x = "Model", y = "Error Value") +
+  theme_minimal() +
+  scale_fill_manual(values = c("RMSE" = "steelblue", "MAE" = "darkorange"))
+
+
+
+#-----------------------------------------
+# fiGARCH and TARCH model performance
+#----------------------------------------
+# CODE FROM LARS IVAR: 
+# CHANGING GARCH_SPEC TO GARCH_SPEC_FI AND GARCH_FIT TO GARCH_FIT_FI
+# SAME WITH TARCH => GARCH_SPEC_TA AND GARCH_FIT_TA
+#----------------------------------------
+
+# fiGARCH is a model where the volatility has long memory. So if the volatility is still stationary,
+# it will take longer to go back to equilibrium when hit by a shock.
+library(rugarch)
+# Fit fiGARCH model
+garch_spec_fi <- ugarchspec(
+  variance.model = list(
+    model = "fiGARCH",
+    garchOrder = c(1,1)
+  ),
+  mean.model = list(
+    armaOrder = c(0,0),
+    include.mean = TRUE
+  ),
+  distribution.model = "norm",
+  # Giving some starting parameters to help convergence
+  start.pars = list(omega = 0.0001, alpha1 = 0.2, beta1 = 0.5)
+)
+garch_fit_fi <- ugarchfit(spec = garch_spec_fi, data = nokeur_data$Log_Returns, solver = "hybrid") #crashes if I run "lbfgs"
+garch_fit_fi
+# We get a significant delta parameter without robust standard errors, it is insignificant with robust standard errors.
+
+
+# TARCH will help capture asymmetries in the dynamics of the returns.
+garch_spec_ta <- ugarchspec(
+  variance.model = list(
+    model = "gjrGARCH",
+    garchOrder = c(1,1)
+  ),
+  mean.model = list(
+    armaOrder = c(0,0),
+    include.mean = TRUE
+  ),
+  distribution.model = "norm"
+)
+garch_fit_ta <- ugarchfit(spec = garch_spec_ta, data = nokeur_data$Log_Returns)
+garch_fit_ta
+# The gamma parameter is also significant without robust standard errors, but insignificant with robust standard errors.
+# Since the gamma is positive and significant without robust standard errors, it indicates that negative shocks have 
+# larger impact on volatility. This is also known as the leverage effect.
+
+#----------------------------------------
+# MODEL PERFORMANCE fiGARCH AND TARCH
+#----------------------------------------
+
+# Extracting AIC and BIC
+aic_fi <- infocriteria(garch_fit_fi)[1]
+bic_fi <- infocriteria(garch_fit_fi)[2]
+
+aic_ta <- infocriteria(garch_fit_ta)[1]
+bic_ta <- infocriteria(garch_fit_ta)[2]
+
+# Print 
+aic_bic_comparison_fi_ta <- data.frame(
+  Model = c("fiGARCH", "TARCH"),
+  AIC = c(aic_fi, aic_ta),
+  BIC = c(bic_fi, bic_ta)
+)
+
+print(aic_bic_comparison_fi_ta)
+
+# Output shows that TARCH has both the lowest AIC and BIC
+
+
+#----------------------------------------
+# ACF AND PACF
+
+# Get residuals from fiGARCH and TARCH models
+figarch_resid <- residuals(garch_fit_fi)
+tarch_resid <- residuals(garch_fit_ta)
+
+# Plot ACF and PACF
+par(mfrow = c(2, 2))  # 2x2 layout for plots
+
+acf(figarch_resid, main = "ACF of fiGARCH Residuals")
+pacf(figarch_resid, main = "PACF of fiGARCH Residuals")
+acf(tarch_resid, main = "ACF of TARCH Residuals")
+pacf(tarch_resid, main = "PACF of TARCH Residuals")
+
+par(mfrow = c(1, 1)) # Reset plotting layout
+
+
+#----------------------------------------
+# Computing RMSE and MAE
+
+library(Metrics)
+
+# Extracting actual values
+actual_values <- log_returns
+
+# Extracting fitted values from fiGARCH and TARCH
+figarch_fitted <- fitted(garch_fit_fi)
+tarch_fitted <- fitted(garch_fit_ta)
+
+# Computing RMSE
+figarch_rmse <- rmse(actual_values, figarch_fitted)
+tarch_rmse <- rmse(actual_values, tarch_fitted)
+
+# Computing MAE
+figarch_mae <- mae(actual_values, figarch_fitted)
+tarch_mae <- mae(actual_values, tarch_fitted)
+
+# Comparison
+rmse_mae_comparison_fi_ta <- data.frame(
+  Model = c("fiGARCH", "TARCH"),
+  RMSE = c(figarch_rmse, tarch_rmse),
+  MAE = c(figarch_mae, tarch_mae)
+)
+
+print(rmse_mae_comparison_fi_ta)
+
+# Output is very similar to that of ARIMA and GARCH 
+# => Small differences between the models, and similar sizes of errors
+
+#Visualization
+library(ggplot2)
+
+# Reshape data for plotting
+rmse_mae_long_fi_ta <- tidyr::pivot_longer(rmse_mae_comparison_fi_ta, cols = c(RMSE, MAE), names_to = "Metric", values_to = "Value")
+
+# Bar plot comparing RMSE and MAE
+ggplot(rmse_mae_long_fi_ta, aes(x = Model, y = Value, fill = Metric)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "RMSE and MAE Comparison fiGARCH and TARCH", x = "Model", y = "Error Value") +
+  theme_minimal() +
+  scale_fill_manual(values = c("RMSE" = "steelblue", "MAE" = "darkorange"))
+
+
+#-------------------------------------------------------------------------
+# MODEL PERFORMANCE: ALL FOUR MODELS - ARIMA, GARCH, fiGARCH AND TARCH
+#-------------------------------------------------------------------------
+
+library(ggplot2)
+library(Metrics)
+library(tidyr)
+library(gridExtra)
+
+#----------------------------------------
+# AIC AND BIC FOR ALL MODELS
+
+aic_values_all <- c(arima_aic, garch_aic, aic_fi, aic_ta)
+bic_values_all <- c(arima_bic, garch_bic, bic_fi, bic_ta)
+
+model_names_all <- c("ARIMA", "GARCH", "fiGARCH", "TARCH")
+
+aic_bic_comparison_all <- data.frame(
+  Model = model_names_all,
+  AIC = aic_values_all,
+  BIC = bic_values_all
+)
+
+print(aic_bic_comparison_all)
+
+# OUTPUT RANKING (lowest criteria values to highest): 
+# 1. TARCH  
+# 2. fiGARCH
+# 3. GARCH
+# 4. ARIMA
+
+#----------------------------------------
+# ACF AND PACF PLOTS FOR ALL MODELS
+
+# Residuals
+residuals_list_all <- list(
+  "ARIMA" = arima_resid,
+  "GARCH" = garch_resid,
+  "fiGARCH" = figarch_resid,
+  "TARCH" = tarch_resid
+)
+
+# Creating ACF and PACF plots
+acf_plots <- list()
+pacf_plots <- list()
+
+for (name in names(residuals_list_all)) {
+  acf_plots[[name]] <- ggAcf(residuals_list_all[[name]]) + ggtitle(paste("ACF -", name))
+  pacf_plots[[name]] <- ggPacf(residuals_list_all[[name]]) + ggtitle(paste("PACF -", name))
+}
+
+# Arranging all plots in a 2x4 grid
+grid.arrange(
+  grobs = c(acf_plots, pacf_plots),
+  ncol = 4
+)
+
+
+
+#----------------------------------------
+# RMSE AND MAE FOR ALL MODELS
+
+# Extract fitted values
+fitted_values <- list(
+  "ARIMA" = arima_fitted,
+  "GARCH" = garch_fitted,
+  "fiGARCH" = figarch_fitted,
+  "TARCH" = tarch_fitted
+)
+
+# Computing RMSE and MAE
+rmse_values_all <- sapply(fitted_values, function(fit) rmse(actual_values, fit))
+mae_values_all <- sapply(fitted_values, function(fit) mae(actual_values, fit))
+
+# Create dataframe
+rmse_mae_comparison_all <- data.frame(
+  Model = model_names_all,
+  RMSE = rmse_values_all,
+  MAE = mae_values_all
+)
+
+print(rmse_mae_comparison_all)
+
+# Reshape data for plotting
+rmse_mae_long_all <- pivot_longer(rmse_mae_comparison_all, cols = c(RMSE, MAE), names_to = "Metric", values_to = "Value")
+
+# Bar plot comparing RMSE and MAE for all models
+ggplot(rmse_mae_long_all, aes(x = Model, y = Value, fill = Metric)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "RMSE and MAE Comparison for All Models", x = "Model", y = "Error Value") +
+  theme_minimal() +
+  scale_fill_manual(values = c("RMSE" = "steelblue", "MAE" = "darkorange"))
 

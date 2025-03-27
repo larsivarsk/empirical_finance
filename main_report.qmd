@@ -8,12 +8,17 @@ editor: visual
 
 The NOK/EUR exchange rate data is sourced from Yahoo Finance using the *quantmod* package in R. The dataset spans from January 1, 2015, to January 1, 2025, and includes the following variables: Date, Open, High, Low, Close, Volume, and Adjusted Close.
 
+Import libraries:
+
 ```{r}
 library(quantmod)
 library(ggplot2)
 library(tseries)
 library(dplyr)
+library(rugarch)
+```
 
+```{r}
 # We retrieve NOK/EUR daily exchange rate data from 2015 to 2025 using Yahoo Finance API
 getSymbols("NOKEUR=X", src = "yahoo", from = "2015-01-01", to = "2025-01-01") 
 
@@ -100,3 +105,59 @@ ljung_box_results
 ```
 
 To statistically confirm volatility clustering, the **Ljung-Box test** is performed on squared log returns. The null hypothesis (H???) assumes no autocorrelation, meaning no volatility clustering. Since all p-values are close to zero, we reject H???, confirming that volatility clusters over time. Therefore, models designed for capturing volatility, such as **GARCH, TARCH, or FIGARCH**, are more appropriate for forecasting short-term fluctuations.
+
+Comment\^: Exercise 5 solution has a lot of answers to the question marks above. Basically, we reject $H_0$ of non-linear dependence, so there is non-linear dependence because of the correlation between squared returns.
+
+We can check if the non-linearity is driven by time series heteroscedasticity by conducting an ARCH test to accept or reject that the error variance is constant over time.
+
+```{r}
+model <- lm(nokeur_data$Log_Returns ~ 1, nokeur_data)
+model_resids <- residuals(model)
+# Choose 5 lags (this is daily data, 5 is a full trading week)
+arch_test <- FinTS::ArchTest(model_resids, lags = 5)
+arch_test
+```
+
+We have heteroskedasticity in our series because the $\text{p-value}<2.2\cdot10^{-16}$, meaning that volatility clusters over time.
+
+Furthermore, we can use a FIGARCH model to check for persistence in the volatility of the time series, which is relevant for both exchange rates, inflation rates and other types of returns in the financial markets. It is a long memory model, meaning that it is volatility stationary, but takes longer to get back to equilibrium when hit by a shock.
+
+```{r}
+garch_spec <- ugarchspec(
+  variance.model = list(
+    model = "fiGARCH",
+    garchOrder = c(1,1)
+  ),
+  mean.model = list(
+    armaOrder = c(0,0),
+    include.mean = TRUE
+  ),
+  distribution.model = "norm",
+  # Giving some starting parameters to help convergence
+  start.pars = list(omega = 0.0001, alpha1 = 0.2, beta1 = 0.5)
+)
+garch_fit <- ugarchfit(spec = garch_spec, data = nokeur_data$Log_Returns, solver = "hybrid") #crashes if I run "lbfgs"
+garch_fit
+```
+
+There is a discrepancy between the non-robust standard errors and robust standard errors for the FIGARCH model. Non-robust errors assume correct model specification and homoscedasticity. However, the ARCH test concluded that there is heteroscedasticity, so we should use the robust standard errors. The delta parameter is insignificant, thus, we do not have long memory, and GARCH is still preferred.
+
+We can also check for asymmetries in the dynamics of the returns by running a TARCH model.
+
+```{r}
+garch_spec <- ugarchspec(
+  variance.model = list(
+    model = "gjrGARCH",
+    garchOrder = c(1,1)
+  ),
+  mean.model = list(
+    armaOrder = c(0,0),
+    include.mean = TRUE
+  ),
+  distribution.model = "norm"
+)
+garch_fit <- ugarchfit(spec = garch_spec, data = nokeur_data$Log_Returns)
+garch_fit
+```
+
+The same goes for this model result; the result is insignificant when using robust standard errors and significant if not. By the same argument as with the FIGARCH model, robust standard errors are preferred, so there are no asymmetries in the data. GARCH is still preferred.

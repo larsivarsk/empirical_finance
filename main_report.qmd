@@ -118,7 +118,7 @@ arch_test <- FinTS::ArchTest(model_resids, lags = 5)
 arch_test
 ```
 
-We have heteroskedasticity in our series because the $\text{p-value}<2.2\cdot10^{-16}$, meaning that volatility clusters over time.
+We have heteroskedasticity in our series because of the $\text{p-value}<2.2\cdot10^{-16}$, meaning that volatility clusters over time.
 
 Furthermore, we can use a FIGARCH model to check for persistence in the volatility of the time series, which is relevant for both exchange rates, inflation rates and other types of returns in the financial markets. It is a long memory model, meaning that it is volatility stationary, but takes longer to get back to equilibrium when hit by a shock.
 

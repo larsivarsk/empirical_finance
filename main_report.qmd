@@ -16,6 +16,8 @@ library(ggplot2)
 library(tseries)
 library(dplyr)
 library(rugarch)
+library(forecast)
+library(Metrics)
 ```
 
 ```{r}
@@ -104,14 +106,14 @@ ljung_box_results <- data.frame(
 ljung_box_results
 ```
 
-```{}
+```         
 ```
 
 To statistically confirm volatility clustering, the **Ljung-Box test** is performed on squared log returns. The null hypothesis (H???) assumes no autocorrelation, meaning no volatility clustering. Since all p-values are close to zero, we reject H???, confirming that volatility clusters over time. Therefore, models designed for capturing volatility, such as **GARCH, TARCH, or FIGARCH**, are more appropriate for forecasting short-term fluctuations.
 
 Comment\^: Exercise 5 solution has a lot of answers to the question marks above. Basically, we reject $H_0$ of non-linear dependence, so there is non-linear dependence because of the correlation between squared returns.
 
-#### ARIMA 
+## ARIMA
 
 Before introducing the models specifically designed to capture volatility clustering, such as GARCH, TARCH, and FIGARCH, we first apply an ARIMA model to the log returns of the NOK/EUR exchange rate. Although ARIMA does not account for changing variance, it provides a useful baseline for modeling short-term dynamics in the conditional mean. Since the series is already stationary, differencing is unnecessary. This is confirmed by the ADF test, which rejects the null hypothesis of non-stationarity. Using `auto.arima()`, the selected model is ARIMA(0,0,1) with zero mean
 
@@ -123,13 +125,13 @@ summary(arima_model)
 # Forecast ARIMA
 forecasted_values <- forecast(arima_model, h = 30)
 plot(forecasted_values)
-forecasted_values$
+forecasted_values
 
 ```
 
 Forecasts from the ARIMA model are centered around zero, with narrow confidence intervals that reflect low variation in predicted values. Thus, the model does not fully capture time-varying volatility. Given the ARIMA model’s limitations in modeling volatility, we proceed by fitting a GARCH model.
 
-#### GARCH
+## GARCH
 
 To better capture volatility, we fit a GARCH(1,1) model. Unlike ARIMA, GARCH models the conditional variance directly and is well-suited for financial returns with volatility clustering.
 
@@ -167,7 +169,7 @@ plot(garch_forecast, which = 3)
 
 The GARCH model’s forecasts are visualized by comparing predicted and realized volatility over time. As shown in the plot, the model captures the general level and structure of volatility reasonably well. While it slightly underestimates sudden spikes, it follows the gradual changes in variance and reflects volatility clustering.
 
-``` R
+``` r
 ```
 
 We can check if the non-linearity is driven by time series heteroscedasticity by conducting an ARCH test to accept or reject that the error variance is constant over time.
@@ -182,10 +184,12 @@ arch_test
 
 We have heteroskedasticity in our series because of the $\text{p-value}<2.2\cdot10^{-16}$, meaning that volatility clusters over time.
 
+## **FIGARCH**
+
 Furthermore, we can use a FIGARCH model to check for persistence in the volatility of the time series, which is relevant for both exchange rates, inflation rates and other types of returns in the financial markets. It is a long memory model, meaning that it is volatility stationary, but takes longer to get back to equilibrium when hit by a shock.
 
 ```{r}
-garch_spec <- ugarchspec(
+garch_spec_fi <- ugarchspec(
   variance.model = list(
     model = "fiGARCH",
     garchOrder = c(1,1)
@@ -198,16 +202,18 @@ garch_spec <- ugarchspec(
   # Giving some starting parameters to help convergence
   start.pars = list(omega = 0.0001, alpha1 = 0.2, beta1 = 0.5)
 )
-garch_fit <- ugarchfit(spec = garch_spec, data = nokeur_data$Log_Returns, solver = "hybrid") #crashes if I run "lbfgs"
-garch_fit
+garch_fit_fi <- ugarchfit(spec = garch_spec_fi, data = nokeur_data$Log_Returns, solver = "hybrid") #crashes if I run "lbfgs"
+garch_fit_fi
 ```
 
 There is a discrepancy between the non-robust standard errors and robust standard errors for the FIGARCH model. Non-robust errors assume correct model specification and homoscedasticity. However, the ARCH test concluded that there is heteroscedasticity, so we should use the robust standard errors. The delta parameter is insignificant, thus, we do not have long memory, and GARCH is still preferred.
 
+## **TARCH**
+
 We can also check for asymmetries in the dynamics of the returns by running a TARCH model.
 
 ```{r}
-garch_spec <- ugarchspec(
+garch_spec_ta <- ugarchspec(
   variance.model = list(
     model = "gjrGARCH",
     garchOrder = c(1,1)
@@ -218,8 +224,113 @@ garch_spec <- ugarchspec(
   ),
   distribution.model = "norm"
 )
-garch_fit <- ugarchfit(spec = garch_spec, data = nokeur_data$Log_Returns)
-garch_fit
+garch_fit_ta <- ugarchfit(spec = garch_spec_ta, data = nokeur_data$Log_Returns)
+garch_fit_ta
 ```
 
 The same goes for this model result; the result is insignificant when using robust standard errors and significant if not. By the same argument as with the FIGARCH model, robust standard errors are preferred, so there are no asymmetries in the data. GARCH is still preferred.
+
+## Model evaluation
+
+#### Information Criteria (IC)
+
+To evaluate and compare the four models, we start by using information criteria, where we have chosen to use AIC (Akaike Information Criteria) and BIC (Bayesian Information Criteria), as presented in lectures. 
+
+For the ARIMA model, we can extract the information using the AIC() and BIC() functions. To make the results comparable to the results for the GARCH models, we divide by the sample size (number of observations, n_obs), such that the scale is of the same size. For GARCH, fiGARCH and TARCH, we use the function infocriteria(), and access AIC as \[1\] and BIC as \[2\]. Finally, we create a dataframe to compare the values, and print the results. 
+
+```{r}
+# The functions AIC() and BIC() does not divide by sample size T
+# Thus finding the number of observations in order to downscale AIC and BIC 
+n_obs <- length(nokeur_data$Log_Returns)
+
+# Extracting AIC and BIC for ARIMA
+arima_aic <- AIC(arima_model) / n_obs
+arima_bic <- BIC(arima_model) / n_obs
+
+# Extracting AIC and BIC for GARCH, fiGARCH, and TARCH
+garch_aic <- infocriteria(garch_fit)[1] 
+garch_bic <- infocriteria(garch_fit)[2] 
+
+aic_fi <- infocriteria(garch_fit_fi)[1]
+bic_fi <- infocriteria(garch_fit_fi)[2]
+
+aic_ta <- infocriteria(garch_fit_ta)[1]
+bic_ta <- infocriteria(garch_fit_ta)[2]
+
+aic_values_all <- c(arima_aic, garch_aic, aic_fi, aic_ta)
+bic_values_all <- c(arima_bic, garch_bic, bic_fi, bic_ta)
+
+model_names_all <- c("ARIMA", "GARCH", "fiGARCH", "TARCH")
+
+aic_bic_comparison_all <- data.frame(
+  Model = model_names_all,
+  AIC = aic_values_all,
+  BIC = bic_values_all
+)
+
+print(aic_bic_comparison_all)
+```
+
+The output shows that TARCH has both the lowest AIC and BIC, followed by fiGARCH and GARCH, and lastly ARIMA.
+
+#### RMSE and MAE
+
+Next, we compute the RMSE (Root Mean Squared Error) and MAE (Mean Absolute Error). RMSE penalizes larger errors more than MAE due to squaring the differences before averaging. This is useful when large deviations should be weighted more heavily. MAE gives equal weight to all errors, making it easier to interpret and more robust to outliers.
+
+Since we are evaluating short-term volatility predictions, and volatility spikes can lead to larger deviations, RMSE is likely the more relevant metric. It ensures that the models minimizing large errors perform better.
+
+```{r}
+# Extracting actual values (to compare to fitted values)
+log_returns <- nokeur_data$Log_Returns
+actual_values <- log_returns
+
+# Extracting fitted values from ARIMA, GARCH, fiGARCH and TARCH
+arima_fitted <- fitted(arima_model)
+garch_fitted <- fitted(garch_fit)
+figarch_fitted <- fitted(garch_fit_fi)
+tarch_fitted <- fitted(garch_fit_ta)
+
+# Creating a list of all fitted values
+fitted_values <- list(
+  "ARIMA" = arima_fitted,
+  "GARCH" = garch_fitted,
+  "fiGARCH" = figarch_fitted,
+  "TARCH" = tarch_fitted
+)
+
+# Computing RMSE and MAE
+rmse_values_all <- sapply(fitted_values, function(fit) rmse(actual_values, fit))
+mae_values_all <- sapply(fitted_values, function(fit) mae(actual_values, fit))
+
+model_names_all <- c("ARIMA", "GARCH", "fiGARCH", "TARCH")
+
+# Create dataframe
+rmse_mae_comparison_all <- data.frame(
+  Model = model_names_all,
+  RMSE = rmse_values_all,
+  MAE = mae_values_all
+)
+
+print(rmse_mae_comparison_all)
+```
+
+The output shows that both the RMSE and MAE are smallest for the ARIMA model. Considering that the information criteria values (AIC and BIC) were largest for ARIMA, these results suggest a trade-off between goodness-of-fit and model complexity. In other words, since the ARIMA model has the lowest RMSE and MAE, it indicates that ARIMA is doing a slightly better job at minimizing absolute and squared errors in predicting the NOK/EUR exchange rate’s short-term volatility, although the differences in errors are very small. ARIMA has the highest AIC and BIC, while TARCH has the lowest. ARIMA is a simpler model but potentially not the best in capturing underlying volatility patterns. The lower values for TARCH indicate that it fits the data better (but may be overfitting).
+
+Plot of the RMSE and MAE:
+
+```{r}
+library(tidyr)
+library(gridExtra)
+```
+
+```{r}
+# Reshaping data for plotting
+rmse_mae_long_all <- pivot_longer(rmse_mae_comparison_all, cols = c(RMSE, MAE), names_to = "Metric", values_to = "Value")
+
+# Bar plot comparing RMSE and MAE for all models
+ggplot(rmse_mae_long_all, aes(x = Model, y = Value, fill = Metric)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "RMSE and MAE Comparison for All Models", x = "Model", y = "Error Value") +
+  theme_minimal() +
+  scale_fill_manual(values = c("RMSE" = "steelblue", "MAE" = "darkorange"))
+```

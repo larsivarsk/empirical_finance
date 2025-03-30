@@ -104,9 +104,71 @@ ljung_box_results <- data.frame(
 ljung_box_results
 ```
 
+```{}
+```
+
 To statistically confirm volatility clustering, the **Ljung-Box test** is performed on squared log returns. The null hypothesis (H???) assumes no autocorrelation, meaning no volatility clustering. Since all p-values are close to zero, we reject H???, confirming that volatility clusters over time. Therefore, models designed for capturing volatility, such as **GARCH, TARCH, or FIGARCH**, are more appropriate for forecasting short-term fluctuations.
 
 Comment\^: Exercise 5 solution has a lot of answers to the question marks above. Basically, we reject $H_0$ of non-linear dependence, so there is non-linear dependence because of the correlation between squared returns.
+
+#### ARIMA 
+
+Before introducing the models specifically designed to capture volatility clustering, such as GARCH, TARCH, and FIGARCH, we first apply an ARIMA model to the log returns of the NOK/EUR exchange rate. Although ARIMA does not account for changing variance, it provides a useful baseline for modeling short-term dynamics in the conditional mean. Since the series is already stationary, differencing is unnecessary. This is confirmed by the ADF test, which rejects the null hypothesis of non-stationarity. Using `auto.arima()`, the selected model is ARIMA(0,0,1) with zero mean
+
+```{r}
+# Build ARIMA model based on ACF/PACF
+arima_model <- auto.arima(nokeur_data$Log_Returns)
+summary(arima_model)
+
+# Forecast ARIMA
+forecasted_values <- forecast(arima_model, h = 30)
+plot(forecasted_values)
+forecasted_values$
+
+```
+
+Forecasts from the ARIMA model are centered around zero, with narrow confidence intervals that reflect low variation in predicted values. Thus, the model does not fully capture time-varying volatility. Given the ARIMA model’s limitations in modeling volatility, we proceed by fitting a GARCH model.
+
+#### GARCH
+
+To better capture volatility, we fit a GARCH(1,1) model. Unlike ARIMA, GARCH models the conditional variance directly and is well-suited for financial returns with volatility clustering.
+
+```{r}
+#| warning: true
+# We define the GARCH model
+garch_spec <- ugarchspec(
+  variance.model = list(model = "sGARCH", garchOrder = c(1, 1)),
+  # "sGARCH" is the standard GARCH model, which models volatility directly.
+  
+  mean.model = list(armaOrder = c(0, 0), include.mean = TRUE),
+  distribution.model = "norm",
+  # We assume the residuals follows a normal distribution.
+)
+
+# Calculate log returns 
+
+log_returns <- nokeur_data$Log_Returns
+
+# Fitting the GARCH model to the data
+garch_fit <- ugarchfit(spec = garch_spec, data = log_returns, solver = "hybrid")
+garch_fit
+
+
+```
+
+The results show that the GARCH(1,1) model captures volatility dynamics more effectively than ARIMA. The high persistence parameter (β₁ ≈ 0.91) indicates that shocks to volatility is persistent. Residual diagnostics suggest that the GARCH(1,1) model handles both autocorrelation and changing volatility well. The Ljung-Box and ARCH LM tests return high p-values, indicating that the model captures the relevant dynamics in the return series. This supports the use of GARCH models for forecasting short-term volatility in the NOK/EUR exchange rate.
+
+```{r}
+# Forecast volatility for the next 30 days
+garch_forecast <- ugarchforecast(garch_fit, n.ahead = 31)
+plot(garch_forecast, which = 3)
+# Which = 3 plots the predicted volatility (standard deviation) over time.
+```
+
+The GARCH model’s forecasts are visualized by comparing predicted and realized volatility over time. As shown in the plot, the model captures the general level and structure of volatility reasonably well. While it slightly underestimates sudden spikes, it follows the gradual changes in variance and reflects volatility clustering.
+
+``` R
+```
 
 We can check if the non-linearity is driven by time series heteroscedasticity by conducting an ARCH test to accept or reject that the error variance is constant over time.
 

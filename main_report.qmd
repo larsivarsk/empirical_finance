@@ -116,16 +116,34 @@ ljung_box_results <- data.frame(
     lag = lag,
     type = "Ljung-Box")$statistic),
   p_value = sapply(lags, function(lag) Box.test(
-    nokeur_data$Log_Returns^2,
+    nokeur_data$Log_Returns,
     lag = lag,
     type = "Ljung-Box")$p.value)
 )
 ljung_box_results
 ```
 
-To statistically confirm non linear dependencies, the **Ljung-Box test** is performed on squared log returns. The null hypothesis ($H_0$) assumes no autocorrelation, meaning no non-linear dependencies. Since all p-values are close to zero, we reject the $H_0$, confirming that there are non-linear dependencies.
+To statistically reject or confirm linear dependencies, the **Ljung-Box test** is performed on log returns. We see little linear dependence in the first lag, but after that there is no significant linear dependence so we cannot reject the null hypothesis that there is no correlation in the first lag.
 
-We can check if the non-linearity is driven by time series heteroscedasticity by conducting an ARCH test to accept or reject that the error variance is constant over time.
+```{r}
+# squared returns show significant autocorrelation -> we confirm that with the following test:
+lags <- 1:10
+ljung_box_results <- data.frame(
+  lag = lags,
+  Q_statistic = sapply(lags, function(lag) Box.test(
+    nokeur_data$Log_Returns^2,
+    lag = lag,
+    type = "Ljung-Box")$statistic),
+  p_value = sapply(lags, function(lag) Box.test(
+    nokeur_data$Log_Returns^2,
+    lag = lag,
+    type = "Ljung-Box")$p.value)
+)
+ljung_box_results
+
+```
+
+Since the p-values of the squared log returns are 0, we can reject the null hypothesis that there is no non-linear correlation. We can check if the non-linearity is driven by time series heteroscedasticity by conducting an ARCH test to accept or reject that the error variance is constant over time.
 
 ```{r}
 model <- lm(nokeur_data$Log_Returns ~ 1, nokeur_data)

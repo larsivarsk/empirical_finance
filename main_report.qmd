@@ -123,9 +123,19 @@ ljung_box_results <- data.frame(
 ljung_box_results
 ```
 
-To statistically confirm volatility clustering, the **Ljung-Box test** is performed on squared log returns. The null hypothesis ($H_0$) assumes no autocorrelation, meaning no volatility clustering. Since all p-values are close to zero, we reject the $H_0$, confirming that volatility clusters over time. Therefore, models designed for capturing volatility, such as **GARCH, TARCH, or FIGARCH**, are more appropriate for forecasting short-term fluctuations.
+To statistically confirm non linear dependencies, the **Ljung-Box test** is performed on squared log returns. The null hypothesis ($H_0$) assumes no autocorrelation, meaning no non-linear dependencies. Since all p-values are close to zero, we reject the $H_0$, confirming that there are non-linear dependencies.
 
-Comment\^: Exercise 5 solution has a lot of answers to the question marks above. Basically, we reject $H_0$ of non-linear dependence, so there is non-linear dependence because of the correlation between squared returns.
+We can check if the non-linearity is driven by time series heteroscedasticity by conducting an ARCH test to accept or reject that the error variance is constant over time.
+
+```{r}
+model <- lm(nokeur_data$Log_Returns ~ 1, nokeur_data)
+model_resids <- residuals(model)
+# Choose 5 lags (this is daily data, 5 is a full trading week)
+arch_test <- FinTS::ArchTest(model_resids, lags = 5)
+arch_test
+```
+
+We have heteroskedasticity in our series because of the $\text{p-value}<2.2\cdot10^{-16}$, meaning that volatility clusters over time. Therefore, models designed for capturing volatility, such as **GARCH, TARCH, or FIGARCH**, are more appropriate for forecasting short-term fluctuations.
 
 ## ARIMA
 
@@ -172,7 +182,7 @@ garch_fit
 
 ```
 
-The results show that the GARCH(1,1) model captures volatility dynamics more effectively than ARIMA. The high persistence parameter (β₁ ≈ 0.91) indicates that shocks to volatility is persistent. Residual diagnostics suggest that the GARCH(1,1) model handles both autocorrelation and changing volatility well. The Ljung-Box and ARCH LM tests return high p-values, indicating that the model captures the relevant dynamics in the return series. This supports the use of GARCH models for forecasting short-term volatility in the NOK/EUR exchange rate.
+The results show that the GARCH(1,1) model captures volatility dynamics more effectively than ARIMA. The high persistence parameter (N2b b  0.91) indicates that shocks to volatility is persistent. Residual diagnostics suggest that the GARCH(1,1) model handles both autocorrelation and changing volatility well. The Ljung-Box and ARCH LM tests return high p-values, indicating that the model captures the relevant dynamics in the return series. This supports the use of GARCH models for forecasting short-term volatility in the NOK/EUR exchange rate.
 
 ```{r}
 # Forecast volatility for the next 30 days
@@ -250,18 +260,6 @@ Another important observation is that the GARCH model did not anticipate the sud
 ``` r
 ```
 
-We can check if the non-linearity is driven by time series heteroscedasticity by conducting an ARCH test to accept or reject that the error variance is constant over time.
-
-```{r}
-model <- lm(nokeur_data$Log_Returns ~ 1, nokeur_data)
-model_resids <- residuals(model)
-# Choose 5 lags (this is daily data, 5 is a full trading week)
-arch_test <- FinTS::ArchTest(model_resids, lags = 5)
-arch_test
-```
-
-We have heteroskedasticity in our series because of the $\text{p-value}<2.2\cdot10^{-16}$, meaning that volatility clusters over time.
-
 ## **FIGARCH**
 
 Furthermore, we can use a FIGARCH model to check for persistence in the volatility of the time series, which is relevant for both exchange rates, inflation rates and other types of returns in the financial markets. It is a long memory model, meaning that it is volatility stationary, but takes longer to get back to equilibrium when hit by a shock.
@@ -312,9 +310,9 @@ The same goes for this model result; the result is insignificant when using robu
 
 #### Information Criteria (IC)
 
-To evaluate and compare the four models, we start by using information criteria, where we have chosen to use AIC (Akaike Information Criteria) and BIC (Bayesian Information Criteria), as presented in lectures. 
+To evaluate and compare the four models, we start by using information criteria, where we have chosen to use AIC (Akaike Information Criteria) and BIC (Bayesian Information Criteria), as presented in lectures.B
 
-For the ARIMA model, we can extract the information using the AIC() and BIC() functions. To make the results comparable to the results for the GARCH models, we divide by the sample size (number of observations, n_obs), such that the scale is of the same size. For GARCH, fiGARCH and TARCH, we use the function infocriteria(), and access AIC as \[1\] and BIC as \[2\]. Finally, we create a dataframe to compare the values, and print the results. 
+For the ARIMA model, we can extract the information using the AIC() and BIC() functions. To make the results comparable to the results for the GARCH models, we divide by the sample size (number of observations, n_obs), such that the scale is of the same size. For GARCH, fiGARCH and TARCH, we use the function infocriteria(), and access AIC as \[1\] and BIC as \[2\]. Finally, we create a dataframe to compare the values, and print the results.B
 
 ```{r}
 # The functions AIC() and BIC() does not divide by sample size T

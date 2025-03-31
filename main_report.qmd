@@ -182,83 +182,7 @@ garch_fit
 
 ```
 
-The results show that the GARCH(1,1) model captures volatility dynamics more effectively than ARIMA. The high persistence parameter (N2b b  0.91) indicates that shocks to volatility is persistent. Residual diagnostics suggest that the GARCH(1,1) model handles both autocorrelation and changing volatility well. The Ljung-Box and ARCH LM tests return high p-values, indicating that the model captures the relevant dynamics in the return series. This supports the use of GARCH models for forecasting short-term volatility in the NOK/EUR exchange rate.
-
-```{r}
-# Forecast volatility for the next 30 days
-garch_forecast <- ugarchforecast(garch_fit, n.ahead = 30)
-plot(garch_forecast, which = 3)
-# Which = 3 plots the predicted volatility (standard deviation) over time.
-```
-
-```{r}
-# Calculate log returns 
-log_returns <- nokeur_data$Log_Returns
-log_returns_train <- head(nokeur_data$Log_Returns, -30)  # Remove the last 30 entries
-log_returns_test <- tail(nokeur_data$Log_Returns, 30) 
-
-# Fitting the GARCH model to the data
-garch_fit_1 <- ugarchfit(spec = garch_spec, data = log_returns_train, solver = "hybrid")
-garch_fit
-realized_volatility <- as.data.frame(sigma(garch_fit_1))
-
-# Forecast volatility for the next 30 days
-garch_forecast <- ugarchforecast(garch_fit_1, n.ahead = 30)
-plot(garch_forecast, which = 3)
-# which = 3 plots the predicted volatility (standard deviation) over time.
-
-# Extract predicted volatility
-predicted_volatility <- as.data.frame(sigma(garch_forecast))
-predicted_volatility$Date <- tail(nokeur_data$Date, 30)
-colnames(predicted_volatility) <- c("Predicted_Volatility", "Date")
-
-# Define rolling window size (e.g., 30 days)
-window_size <- 30
-
-# Compute rolling realized volatility
-nokeur_data$Realized_Volatility <- rollapply(nokeur_data$Log_Returns, 
-                                             width = window_size, 
-                                             FUN = function(x) sqrt(sum(x^2)), 
-                                             align = "right", fill = NA)
-
-nokeur_data$Realized_Volatility_Daily <- nokeur_data$Realized_Volatility / sqrt(window_size)
-
-# Merge the data
-comparison_data <- merge(nokeur_data, predicted_volatility, by = "Date", all.x = TRUE)
-# Set the time period for the last year (e.g., 2024)
-start_date <- as.Date("2024-01-01")
-end_date <- as.Date("2024-12-31")
-
-# Filter data for the period of interest
-comparison_data_last_year <- subset(comparison_data, Date >= start_date & Date <= end_date)
-
-# Plot the comparison
-ggplot(comparison_data_last_year, aes(x = Date)) +
-  geom_line(aes(y = comparison_data_last_year$Realized_Volatility_Daily, color = "Realized Volatility"), size = 1) +
-  geom_line(aes(y = comparison_data_last_year$Predicted_Volatility, color = "Predicted Volatility"), size = 1) +
-  labs(title = "Predicted vs. Realized Volatility",
-       y = "Volatility", x = "Date") +
-  scale_color_manual(values = c("Realized Volatility" = "blue", "Predicted Volatility" = "red")) +
-  theme_minimal()
-
-```
-
-The GARCH model's forecasts are visualized by comparing predicted and realized volatility over time. As shown in the plot, the model captures the general level and structure of volatility reasonably well. While it slightly underestimates sudden spikes, it follows the gradual changes in variance and reflects volatility clustering.
-
-To forecast the volatility of NOK/EUR exchange rate log returns, we trained the model on historical log returns up to November 20, 2024, with the last 30 entries omitted to serve as an out-of-sample test set (accounting for weekends and holidays). The predicted volatility was then compared to realized volatility, computed using a rolling window approach with a window size of 30 days:
-
-$$
-RV_t = \sqrt{\frac{\sum_{i=t-N+1}^{t} r_i^2}{N}},
-$$
-
-where $r_i$ are daily log returns.
-
-We observe that the predicted volatility tends to be higher than the realized volatility. This is because the GARCH model assumes volatility clustering, meaning it carries forward high volatility expectations when recent fluctuations have been elevated. A key observation is the volatility spike just before the forecast period, which the model captures. As a result, it overestimates future volatility in December 2024.
-
-Another important observation is that the GARCH model did not anticipate the sudden volatility jump on December 31, 2024. This spike was likely driven by year-end market effects, such as liquidity drops, portfolio rebalancing, and institutional position adjustments. Since GARCH relies on historical patterns, it is not designed to predict abrupt, one-time shocks, which explains why its forecasted volatility remained lower than the realized volatility at year-end.
-
-``` r
-```
+The results show that the GARCH(1,1) model captures volatility dynamics more effectively than ARIMA. The high persistence parameter (β₁ ≈ 0.91) indicates that shocks to volatility is persistent. Residual diagnostics suggest that the GARCH(1,1) model handles both autocorrelation and changing volatility well. The Ljung-Box and ARCH LM tests return high p-values, indicating that the model captures the relevant dynamics in the return series. This supports the use of GARCH models for forecasting short-term volatility in the NOK/EUR exchange rate.
 
 ## **FIGARCH**
 
@@ -310,7 +234,7 @@ The same goes for this model result; the result is insignificant when using robu
 
 #### Information Criteria (IC)
 
-To evaluate and compare the four models, we start by using information criteria, where we have chosen to use AIC (Akaike Information Criteria) and BIC (Bayesian Information Criteria), as presented in lectures.B
+To evaluate and compare the four models, we start by using information criteria, where we have chosen to use AIC (Akaike Information Criteria) and BIC (Bayesian Information Criteria), as presented in lectures.
 
 For the ARIMA model, we can extract the information using the AIC() and BIC() functions. To make the results comparable to the results for the GARCH models, we divide by the sample size (number of observations, n_obs), such that the scale is of the same size. For GARCH, fiGARCH and TARCH, we use the function infocriteria(), and access AIC as \[1\] and BIC as \[2\]. Finally, we create a dataframe to compare the values, and print the results.B
 
@@ -401,7 +325,86 @@ rmse_mae_long_all <- pivot_longer(rmse_mae_comparison_all, cols = c(RMSE, MAE), 
 # Bar plot comparing RMSE and MAE for all models
 ggplot(rmse_mae_long_all, aes(x = Model, y = Value, fill = Metric)) +
   geom_bar(stat = "identity", position = "dodge") +
-  labs(title = "RMSE and MAE Comparison for All Models", x = "Model", y = "Error Value") +
-  theme_minimal() +
+  labs(title = "RMSE and MAE Comparison for All Models", x = "Model", y = "Error Value") + theme_minimal() +
   scale_fill_manual(values = c("RMSE" = "steelblue", "MAE" = "darkorange"))
 ```
+
+### Forecasting
+
+```{r}
+# Calculate log returns 
+log_returns <- nokeur_data$Log_Returns
+log_returns_train <- head(nokeur_data$Log_Returns, -30)  # Remove the last 30 entries
+log_returns_test <- tail(nokeur_data$Log_Returns, 30) 
+
+# Fitting the GARCH model to the data
+garch_fit_1 <- ugarchfit(spec = garch_spec, data = log_returns_train, solver = "hybrid")
+garch_fit
+realized_volatility <- as.data.frame(sigma(garch_fit_1))
+
+# Forecast volatility for the next 30 days
+garch_forecast <- ugarchforecast(garch_fit_1, n.ahead = 30)
+plot(garch_forecast, which = 3)
+# which = 3 plots the predicted volatility (standard deviation) over time.
+
+# Extract predicted volatility
+predicted_volatility <- as.data.frame(sigma(garch_forecast))
+predicted_volatility$Date <- tail(nokeur_data$Date, 30)
+colnames(predicted_volatility) <- c("Predicted_Volatility", "Date")
+
+# Define rolling window size (e.g., 30 days)
+window_size <- 30
+
+# Compute rolling realized volatility
+nokeur_data$Realized_Volatility <- rollapply(nokeur_data$Log_Returns, 
+                                             width = window_size, 
+                                             FUN = function(x) sqrt(sum(x^2)), 
+                                             align = "right", fill = NA)
+
+nokeur_data$Realized_Volatility_Daily <- nokeur_data$Realized_Volatility / sqrt(window_size)
+
+# Merge the data
+comparison_data <- merge(nokeur_data, predicted_volatility, by = "Date", all.x = TRUE)
+# Set the time period for the last year (e.g., 2024)
+start_date <- as.Date("2024-01-01")
+end_date <- as.Date("2024-12-31")
+
+# Filter data for the period of interest
+comparison_data_last_year <- subset(comparison_data, Date >= start_date & Date <= end_date)
+
+# Plot the comparison
+ggplot(comparison_data_last_year, aes(x = Date)) +
+  geom_line(aes(y = comparison_data_last_year$Realized_Volatility_Daily, color = "Realized Volatility"), size = 1) +
+  geom_line(aes(y = comparison_data_last_year$Predicted_Volatility, color = "Predicted Volatility"), size = 1) +
+  labs(title = "Predicted vs. Realized Volatility",
+       y = "Volatility", x = "Date") +
+  scale_color_manual(values = c("Realized Volatility" = "blue", "Predicted Volatility" = "red")) +
+  theme_minimal()
+
+```
+
+The GARCH model's forecasts are visualized by comparing predicted and realized volatility over time. As shown in the plot, the model captures the general level and structure of volatility reasonably well. While it slightly underestimates sudden spikes, it follows the gradual changes in variance and reflects volatility clustering.
+
+To forecast the volatility of NOK/EUR exchange rate log returns, we trained the model on historical log returns up to November 20, 2024, with the last 30 entries omitted to serve as an out-of-sample test set (accounting for weekends and holidays). The predicted volatility was then compared to realized volatility, computed using a rolling window approach with a window size of 30 days:
+
+$$
+RV_t = \sqrt{\frac{\sum_{i=t-N+1}^{t} r_i^2}{N}},
+$$
+
+where $r_i$ are daily log returns.
+
+We observe that the predicted volatility tends to be higher than the realized volatility. This is because the GARCH model assumes volatility clustering, meaning it carries forward high volatility expectations when recent fluctuations have been elevated. A key observation is the volatility spike just before the forecast period, which the model captures. As a result, it overestimates future volatility in December 2024.
+
+Another important observation is that the GARCH model did not anticipate the sudden volatility jump on December 31, 2024. This spike was likely driven by year-end market effects, such as liquidity drops, portfolio rebalancing, and institutional position adjustments. Since GARCH relies on historical patterns, it is not designed to predict abrupt, one-time shocks, which explains why its forecasted volatility remained lower than the realized volatility at year-end.
+
+# **Conclusion**
+
+Our research aimed to answer the question: How well can time-series models predict short-term volatility in the NOK/EUR exchange rate? Based on our findings, while GARCH-based models effectively captured volatility clustering and persistent fluctuations, they exhibited limitations in predicting sudden, one-time market shocks. The model tended to overestimate future volatility due to a significant volatility spike just before the forecast period, reinforcing the tendency of GARCH models to propagate past volatility into future estimates. Additionally, the unexpected jump in volatility on December 31, 2024, which was likely caused by year-end market effects, was not captured by the model, as GARCH assumes that volatility follows historical patterns rather than abrupt structural breaks.
+
+Despite these limitations, GARCH performed better than simpler models like ARIMA. Alternative models, such as FIGARCH and TARCH, showed potential but did not significantly outperform GARCH in our case. This suggests that while GARCH-based models are useful for short-term volatility forecasting, their reliance on past conditional variance makes them susceptible to overestimation when recent volatility has been elevated. 
+
+# **Use of LLMs**
+
+We used large language models (LLMs) primarily for debugging errors, troubleshooting issues in our R code, and understanding functions from R libraries that were not covered in our curriculum. LLMs helped clarify error messages, suggest corrections, and provide explanations for complex functions, which improved our understanding of advanced time-series modeling techniques.
+
+\

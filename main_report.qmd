@@ -4,7 +4,19 @@ format: html
 editor: visual
 ---
 
-## Connecting to the Yahoo finance API
+# Introduction and problem statement
+
+Our research question is:
+
+#### ***How well can time-series models predict short-term volatility in the NOK/EUR exchange rate?***
+
+Our research question involves analyzing exchange rate movements using historical data and applying econometric time-series models to predict short-term volatility. Exchange rates exhibit volatility clustering, trends, and seasonality, making them an interesting topic for our project.
+
+The report will use the following empirical design. First, we conduct exploratory data analysis, where we visualize exchange rate movements and volatility over time. In addition, we check for stationary with the Augmented Dickey-Fuller (ADF) test. Then, we perform time-series modelling using ARIMA, GARCH, fiGARCH and TARCH models. To compare the models, different performance metrics are used. Finally, we use the models to make predictions, and then conclude on our research question.
+
+# Data
+
+### Connecting to the Yahoo finance API
 
 The NOK/EUR exchange rate data is sourced from Yahoo Finance using the *quantmod* package in R. The dataset spans from January 1, 2015, to January 1, 2025, and includes the following variables: Date, Open, High, Low, Close, Volume, and Adjusted Close.
 
@@ -18,6 +30,9 @@ library(dplyr)
 library(rugarch)
 library(forecast)
 library(Metrics)
+library(zoo)
+library(tidyr)
+library(gridExtra)
 ```
 
 ```{r}
@@ -60,6 +75,8 @@ ggplot(nokeur_data, aes(x = Date, y = Log_Returns)) +
   theme_minimal()
 
 ```
+
+# Empirical analysis
 
 A time-series plot of the NOK/EUR exchange rate shows trends and fluctuations over time. However, when log returns are plotted, they appear more stationary, with visible volatility clustering---periods of high and low fluctuations in returns.
 
@@ -378,11 +395,6 @@ print(rmse_mae_comparison_all)
 The output shows that both the RMSE and MAE are smallest for the ARIMA model. Considering that the information criteria values (AIC and BIC) were largest for ARIMA, these results suggest a trade-off between goodness-of-fit and model complexity. In other words, since the ARIMA model has the lowest RMSE and MAE, it indicates that ARIMA is doing a slightly better job at minimizing absolute and squared errors in predicting the NOK/EUR exchange rate's short-term volatility, although the differences in errors are very small. ARIMA has the highest AIC and BIC, while TARCH has the lowest. ARIMA is a simpler model but potentially not the best in capturing underlying volatility patterns. The lower values for TARCH indicate that it fits the data better (but may be overfitting).
 
 Plot of the RMSE and MAE:
-
-```{r}
-library(tidyr)
-library(gridExtra)
-```
 
 ```{r}
 # Reshaping data for plotting

@@ -1,0 +1,431 @@
+---
+title: "extended_exercise"
+format: html
+editor: visual
+---
+
+# Introduction and problem statement
+
+Our research question is:
+
+#### ***How well can time-series models predict short-term volatility in the NOK/EUR exchange rate?***
+
+Our research question involves analyzing exchange rate movements using historical data and applying econometric time-series models to predict short-term volatility. Exchange rates exhibit volatility clustering, trends, and seasonality, making them an interesting topic for our project.
+
+The report will use the following empirical design. First, we conduct exploratory data analysis, where we visualize exchange rate movements and volatility over time. In addition, we check for stationary with the Augmented Dickey-Fuller (ADF) test. Then, we perform time-series modelling using ARIMA, GARCH, fiGARCH and TARCH models. To compare the models, different performance metrics are used. Finally, we use the models to make predictions, and then conclude on our research question.
+
+# Data
+
+### Connecting to the Yahoo finance API
+
+The NOK/EUR exchange rate data is sourced from Yahoo Finance using the *quantmod* package in R. The dataset spans from January 1, 2015, to January 1, 2025, and includes the following variables: Date, Open, High, Low, Close, Volume, and Adjusted Close.
+
+Import libraries:
+
+```{r}
+library(quantmod)
+library(ggplot2)
+library(tseries)
+library(dplyr)
+library(rugarch)
+library(forecast)
+library(Metrics)
+library(zoo)
+library(tidyr)
+library(gridExtra)
+```
+
+```{r}
+# We retrieve NOK/EUR daily exchange rate data from 2015 to 2025 using Yahoo Finance API
+getSymbols("NOKEUR=X", src = "yahoo", from = "2015-01-01", to = "2025-01-01") 
+
+# We convert the data to dataframe and adjust column names
+nokeur_data <- data.frame(Date = index(`NOKEUR=X`), coredata(`NOKEUR=X`))
+nokeur_data <- na.omit(nokeur_data)
+colnames(nokeur_data) <- c("Date", "Open", "High", "Low", "Close", "Volume", "Adjusted")
+
+ggplot(nokeur_data, aes(x = Date, y = Close)) +
+  geom_line(color = "darkorchid4") + 
+  labs(title = "NOK/EUR Exchange Rate", 
+       x = "Date", y = "Exchange Rate") +
+  theme_minimal()
+```
+
+Since many time-series models require stationarity, log returns of the exchange rate are computed using:
+
+$$
+LogReturn_t = \log \left( \frac{Close_t}{Close_{t-1}} \right).
+$$
+
+This transformation helps in stabilizing variance and making the series more stationary.
+
+```{r}
+# Most time-series models require stationary data. Log returns help achieve stationarity.
+nokeur_data <- nokeur_data %>%
+  mutate(Log_Returns = log(Close / lag(Close)))
+
+# Remove NA values caused by lag
+nokeur_data <- na.omit(nokeur_data)
+
+# We plot the data to visualy inspect stationarity, volatility clustering,...
+ggplot(nokeur_data, aes(x = Date, y = Log_Returns)) +
+  geom_line(color = "cyan4") +
+  labs(title = "Log Returns of NOK/EUR Exchange Rate", 
+       x = "Date", y = "Log Returns") +
+  theme_minimal()
+
+```
+
+# Empirical analysis
+
+A time-series plot of the NOK/EUR exchange rate shows trends and fluctuations over time. However, when log returns are plotted, they appear more stationary, with visible volatility clustering---periods of high and low fluctuations in returns.
+
+```{r}
+# We confirm stationarity with ADF test (H0 = Time series is non-stationary)
+adf.test(nokeur_data$Log_Returns, alternative = "stationary")
+```
+
+To formally test stationarity, the **Augmented Dickey-Fuller (ADF) test** is conducted. The null hypothesis ($H_0$) assumes that time series is non-stationary, while the alternative hypothesis ($H_1$) assumes stationarity. Since the p-value of the ADF test is less than 0.05, we reject the $H_0$ and conclude that log returns are stationary, making them suitable for time-series modeling.
+
+```{r}
+# ACF and PACF of Log Returns
+par(mfrow = c(1, 2))
+acf(nokeur_data$Log_Returns, main = "ACF of Log Returns")
+pacf(nokeur_data$Log_Returns, main = "PACF of Log Returns")
+```
+
+Autocorrelation (ACF) and Partial Autocorrelation (PACF) plots of log returns are examined to detect linear dependencies. The results indicate minimal autocorrelation, implying that past returns do not significantly influence future returns. Consequently, simple autoregressive models such as AR(1) are not useful in this case.
+
+```{r}
+# ACF and PACF of squared Log Returns to check for volatility clustering and non-linear dependence
+par(mfrow = c(1, 2))
+acf(nokeur_data$Log_Returns^2, main = "ACF of Squared Log Returns")
+pacf(nokeur_data$Log_Returns^2, main = "PACF of Squared Log Returns")
+
+```
+
+To analyze non-linear dependencies, ACF and PACF plots of **squared log returns** are examined. The presence of significant autocorrelation suggests volatility clustering---periods of high volatility are followed by high volatility, and low volatility by low volatility.
+
+```{r}
+# squared returns show significant autocorrelation -> we confirm that with the following test:
+lags <- 1:10
+ljung_box_results <- data.frame(
+  lag = lags,
+  Q_statistic = sapply(lags, function(lag) Box.test(
+    nokeur_data$Log_Returns^2,
+    lag = lag,
+    type = "Ljung-Box")$statistic),
+  p_value = sapply(lags, function(lag) Box.test(
+    nokeur_data$Log_Returns,
+    lag = lag,
+    type = "Ljung-Box")$p.value)
+)
+ljung_box_results
+```
+
+To statistically reject or confirm linear dependencies, the **Ljung-Box test** is performed on log returns. We see little linear dependence in the first lag, but after that there is no significant linear dependence so we cannot reject the null hypothesis that there is no correlation in the first lag.
+
+```{r}
+# squared returns show significant autocorrelation -> we confirm that with the following test:
+lags <- 1:10
+ljung_box_results <- data.frame(
+  lag = lags,
+  Q_statistic = sapply(lags, function(lag) Box.test(
+    nokeur_data$Log_Returns^2,
+    lag = lag,
+    type = "Ljung-Box")$statistic),
+  p_value = sapply(lags, function(lag) Box.test(
+    nokeur_data$Log_Returns^2,
+    lag = lag,
+    type = "Ljung-Box")$p.value)
+)
+ljung_box_results
+
+```
+
+Since the p-values of the squared log returns are 0, we can reject the null hypothesis that there is no non-linear correlation. We can check if the non-linearity is driven by time series heteroscedasticity by conducting an ARCH test to accept or reject that the error variance is constant over time.
+
+```{r}
+model <- lm(nokeur_data$Log_Returns ~ 1, nokeur_data)
+model_resids <- residuals(model)
+# Choose 5 lags (this is daily data, 5 is a full trading week)
+arch_test <- FinTS::ArchTest(model_resids, lags = 5)
+arch_test
+```
+
+We have heteroskedasticity in our series because of the $\text{p-value}<2.2\cdot10^{-16}$, meaning that volatility clusters over time. Therefore, models designed for capturing volatility, such as **GARCH, TARCH, or FIGARCH**, are more appropriate for forecasting short-term fluctuations.
+
+## ARIMA
+
+Before introducing the models specifically designed to capture volatility clustering, such as GARCH, TARCH, and FIGARCH, we first apply an ARIMA model to the log returns of the NOK/EUR exchange rate. Although ARIMA does not account for changing variance, it provides a useful baseline for modeling short-term dynamics in the conditional mean. Since the series is already stationary, differencing is unnecessary. This is confirmed by the ADF test, which rejects the null hypothesis of non-stationarity. Using `auto.arima()`, the selected model is ARIMA(0,0,1) with zero mean
+
+```{r}
+# Build ARIMA model based on ACF/PACF
+arima_model <- auto.arima(nokeur_data$Log_Returns)
+summary(arima_model)
+
+# Forecast ARIMA
+forecasted_values <- forecast(arima_model, h = 30)
+plot(forecasted_values)
+forecasted_values
+
+```
+
+Forecasts from the ARIMA model are centered around zero, with narrow confidence intervals that reflect low variation in predicted values. Thus, the model does not fully capture time-varying volatility. Given the ARIMA model's limitations in modeling volatility, we proceed by fitting a GARCH model.
+
+## GARCH
+
+To better capture volatility, we fit a GARCH(1,1) model. Unlike ARIMA, GARCH models the conditional variance directly and is well-suited for financial returns with volatility clustering.
+
+```{r}
+#| warning: true
+# We define the GARCH model
+garch_spec <- ugarchspec(
+  variance.model = list(model = "sGARCH", garchOrder = c(1, 1)),
+  # "sGARCH" is the standard GARCH model, which models volatility directly.
+  
+  mean.model = list(armaOrder = c(0, 0), include.mean = TRUE),
+  distribution.model = "norm",
+  # We assume the residuals follows a normal distribution.
+)
+
+# Calculate log returns 
+
+log_returns <- nokeur_data$Log_Returns
+
+# Fitting the GARCH model to the data
+garch_fit <- ugarchfit(spec = garch_spec, data = log_returns, solver = "hybrid")
+garch_fit
+
+
+```
+
+The results show that the GARCH(1,1) model captures volatility dynamics more effectively than ARIMA. The high persistence parameter (β₁ ≈ 0.91) indicates that shocks to volatility is persistent. Residual diagnostics suggest that the GARCH(1,1) model handles both autocorrelation and changing volatility well. The Ljung-Box and ARCH LM tests return high p-values, indicating that the model captures the relevant dynamics in the return series. This supports the use of GARCH models for forecasting short-term volatility in the NOK/EUR exchange rate.
+
+## **FIGARCH**
+
+Furthermore, we can use a FIGARCH model to check for persistence in the volatility of the time series, which is relevant for both exchange rates, inflation rates and other types of returns in the financial markets. It is a long memory model, meaning that it is volatility stationary, but takes longer to get back to equilibrium when hit by a shock.
+
+```{r}
+garch_spec_fi <- ugarchspec(
+  variance.model = list(
+    model = "fiGARCH",
+    garchOrder = c(1,1)
+  ),
+  mean.model = list(
+    armaOrder = c(0,0),
+    include.mean = TRUE
+  ),
+  distribution.model = "norm",
+  # Giving some starting parameters to help convergence
+  start.pars = list(omega = 0.0001, alpha1 = 0.2, beta1 = 0.5)
+)
+garch_fit_fi <- ugarchfit(spec = garch_spec_fi, data = nokeur_data$Log_Returns, solver = "hybrid") #crashes if I run "lbfgs"
+garch_fit_fi
+```
+
+There is a discrepancy between the non-robust standard errors and robust standard errors for the FIGARCH model. Non-robust errors assume correct model specification and homoscedasticity. However, the ARCH test concluded that there is heteroscedasticity, so we should use the robust standard errors. The delta parameter is insignificant, thus, we do not have long memory, and GARCH is still preferred.
+
+## **TARCH**
+
+We can also check for asymmetries in the dynamics of the returns by running a TARCH model.
+
+```{r}
+garch_spec_ta <- ugarchspec(
+  variance.model = list(
+    model = "gjrGARCH",
+    garchOrder = c(1,1)
+  ),
+  mean.model = list(
+    armaOrder = c(0,0),
+    include.mean = TRUE
+  ),
+  distribution.model = "norm"
+)
+garch_fit_ta <- ugarchfit(spec = garch_spec_ta, data = nokeur_data$Log_Returns)
+garch_fit_ta
+```
+
+The same goes for this model result; the result is insignificant when using robust standard errors and significant if not. By the same argument as with the FIGARCH model, robust standard errors are preferred, so there are no asymmetries in the data. GARCH is still preferred.
+
+## Model evaluation
+
+#### Information Criteria (IC)
+
+To evaluate and compare the four models, we start by using information criteria, where we have chosen to use AIC (Akaike Information Criteria) and BIC (Bayesian Information Criteria), as presented in lectures.
+
+For the ARIMA model, we can extract the information using the AIC() and BIC() functions. To make the results comparable to the results for the GARCH models, we divide by the sample size (number of observations, n_obs), such that the scale is of the same size. For GARCH, fiGARCH and TARCH, we use the function infocriteria(), and access AIC as \[1\] and BIC as \[2\]. Finally, we create a dataframe to compare the values, and print the results.B
+
+```{r}
+# The functions AIC() and BIC() does not divide by sample size T
+# Thus finding the number of observations in order to downscale AIC and BIC 
+n_obs <- length(nokeur_data$Log_Returns)
+
+# Extracting AIC and BIC for ARIMA
+arima_aic <- AIC(arima_model) / n_obs
+arima_bic <- BIC(arima_model) / n_obs
+
+# Extracting AIC and BIC for GARCH, fiGARCH, and TARCH
+garch_aic <- infocriteria(garch_fit)[1] 
+garch_bic <- infocriteria(garch_fit)[2] 
+
+aic_fi <- infocriteria(garch_fit_fi)[1]
+bic_fi <- infocriteria(garch_fit_fi)[2]
+
+aic_ta <- infocriteria(garch_fit_ta)[1]
+bic_ta <- infocriteria(garch_fit_ta)[2]
+
+aic_values_all <- c(arima_aic, garch_aic, aic_fi, aic_ta)
+bic_values_all <- c(arima_bic, garch_bic, bic_fi, bic_ta)
+
+model_names_all <- c("ARIMA", "GARCH", "fiGARCH", "TARCH")
+
+aic_bic_comparison_all <- data.frame(
+  Model = model_names_all,
+  AIC = aic_values_all,
+  BIC = bic_values_all
+)
+
+print(aic_bic_comparison_all)
+```
+
+The output shows that TARCH has both the lowest AIC and BIC, followed by fiGARCH and GARCH, and lastly ARIMA.
+
+#### RMSE and MAE
+
+Next, we compute the RMSE (Root Mean Squared Error) and MAE (Mean Absolute Error). RMSE penalizes larger errors more than MAE due to squaring the differences before averaging. This is useful when large deviations should be weighted more heavily. MAE gives equal weight to all errors, making it easier to interpret and more robust to outliers.
+
+Since we are evaluating short-term volatility predictions, and volatility spikes can lead to larger deviations, RMSE is likely the more relevant metric. It ensures that the models minimizing large errors perform better.
+
+```{r}
+# Extracting actual values (to compare to fitted values)
+log_returns <- nokeur_data$Log_Returns
+actual_values <- log_returns
+
+# Extracting fitted values from ARIMA, GARCH, fiGARCH and TARCH
+arima_fitted <- fitted(arima_model)
+garch_fitted <- fitted(garch_fit)
+figarch_fitted <- fitted(garch_fit_fi)
+tarch_fitted <- fitted(garch_fit_ta)
+
+# Creating a list of all fitted values
+fitted_values <- list(
+  "ARIMA" = arima_fitted,
+  "GARCH" = garch_fitted,
+  "fiGARCH" = figarch_fitted,
+  "TARCH" = tarch_fitted
+)
+
+# Computing RMSE and MAE
+rmse_values_all <- sapply(fitted_values, function(fit) rmse(actual_values, fit))
+mae_values_all <- sapply(fitted_values, function(fit) mae(actual_values, fit))
+
+model_names_all <- c("ARIMA", "GARCH", "fiGARCH", "TARCH")
+
+# Create dataframe
+rmse_mae_comparison_all <- data.frame(
+  Model = model_names_all,
+  RMSE = rmse_values_all,
+  MAE = mae_values_all
+)
+
+print(rmse_mae_comparison_all)
+```
+
+The output shows that both the RMSE and MAE are smallest for the ARIMA model. Considering that the information criteria values (AIC and BIC) were largest for ARIMA, these results suggest a trade-off between goodness-of-fit and model complexity. In other words, since the ARIMA model has the lowest RMSE and MAE, it indicates that ARIMA is doing a slightly better job at minimizing absolute and squared errors in predicting the NOK/EUR exchange rate's short-term volatility, although the differences in errors are very small. ARIMA has the highest AIC and BIC, while TARCH has the lowest. ARIMA is a simpler model but potentially not the best in capturing underlying volatility patterns. The lower values for TARCH indicate that it fits the data better (but may be overfitting).
+
+Plot of the RMSE and MAE:
+
+```{r}
+# Reshaping data for plotting
+rmse_mae_long_all <- pivot_longer(rmse_mae_comparison_all, cols = c(RMSE, MAE), names_to = "Metric", values_to = "Value")
+
+# Bar plot comparing RMSE and MAE for all models
+ggplot(rmse_mae_long_all, aes(x = Model, y = Value, fill = Metric)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "RMSE and MAE Comparison for All Models", x = "Model", y = "Error Value") + theme_minimal() +
+  scale_fill_manual(values = c("RMSE" = "steelblue", "MAE" = "darkorange"))
+```
+
+### Forecasting
+
+```{r}
+# Calculate log returns 
+log_returns <- nokeur_data$Log_Returns
+log_returns_train <- head(nokeur_data$Log_Returns, -30)  # Remove the last 30 entries
+log_returns_test <- tail(nokeur_data$Log_Returns, 30) 
+
+# Fitting the GARCH model to the data
+garch_fit_1 <- ugarchfit(spec = garch_spec, data = log_returns_train, solver = "hybrid")
+garch_fit
+realized_volatility <- as.data.frame(sigma(garch_fit_1))
+
+# Forecast volatility for the next 30 days
+garch_forecast <- ugarchforecast(garch_fit_1, n.ahead = 30)
+plot(garch_forecast, which = 3)
+# which = 3 plots the predicted volatility (standard deviation) over time.
+
+# Extract predicted volatility
+predicted_volatility <- as.data.frame(sigma(garch_forecast))
+predicted_volatility$Date <- tail(nokeur_data$Date, 30)
+colnames(predicted_volatility) <- c("Predicted_Volatility", "Date")
+
+# Define rolling window size (e.g., 30 days)
+window_size <- 30
+
+# Compute rolling realized volatility
+nokeur_data$Realized_Volatility <- rollapply(nokeur_data$Log_Returns, 
+                                             width = window_size, 
+                                             FUN = function(x) sqrt(sum(x^2)), 
+                                             align = "right", fill = NA)
+
+nokeur_data$Realized_Volatility_Daily <- nokeur_data$Realized_Volatility / sqrt(window_size)
+
+# Merge the data
+comparison_data <- merge(nokeur_data, predicted_volatility, by = "Date", all.x = TRUE)
+# Set the time period for the last year (e.g., 2024)
+start_date <- as.Date("2024-01-01")
+end_date <- as.Date("2024-12-31")
+
+# Filter data for the period of interest
+comparison_data_last_year <- subset(comparison_data, Date >= start_date & Date <= end_date)
+
+# Plot the comparison
+ggplot(comparison_data_last_year, aes(x = Date)) +
+  geom_line(aes(y = comparison_data_last_year$Realized_Volatility_Daily, color = "Realized Volatility"), size = 1) +
+  geom_line(aes(y = comparison_data_last_year$Predicted_Volatility, color = "Predicted Volatility"), size = 1) +
+  labs(title = "Predicted vs. Realized Volatility",
+       y = "Volatility", x = "Date") +
+  scale_color_manual(values = c("Realized Volatility" = "blue", "Predicted Volatility" = "red")) +
+  theme_minimal()
+
+```
+
+The GARCH model's forecasts are visualized by comparing predicted and realized volatility over time. As shown in the plot, the model captures the general level and structure of volatility reasonably well. While it slightly underestimates sudden spikes, it follows the gradual changes in variance and reflects volatility clustering.
+
+To forecast the volatility of NOK/EUR exchange rate log returns, we trained the model on historical log returns up to November 20, 2024, with the last 30 entries omitted to serve as an out-of-sample test set (accounting for weekends and holidays). The predicted volatility was then compared to realized volatility, computed using a rolling window approach with a window size of 30 days:
+
+$$
+RV_t = \sqrt{\frac{\sum_{i=t-N+1}^{t} r_i^2}{N}},
+$$
+
+where $r_i$ are daily log returns.
+
+We observe that the predicted volatility tends to be higher than the realized volatility. This is because the GARCH model assumes volatility clustering, meaning it carries forward high volatility expectations when recent fluctuations have been elevated. A key observation is the volatility spike just before the forecast period, which the model captures. As a result, it overestimates future volatility in December 2024.
+
+Another important observation is that the GARCH model did not anticipate the sudden volatility jump on December 31, 2024. This spike was likely driven by year-end market effects, such as liquidity drops, portfolio rebalancing, and institutional position adjustments. Since GARCH relies on historical patterns, it is not designed to predict abrupt, one-time shocks, which explains why its forecasted volatility remained lower than the realized volatility at year-end.
+
+# **Conclusion**
+
+Our research aimed to answer the question: How well can time-series models predict short-term volatility in the NOK/EUR exchange rate? Based on our findings, while GARCH-based models effectively captured volatility clustering and persistent fluctuations, they exhibited limitations in predicting sudden, one-time market shocks. The model tended to overestimate future volatility due to a significant volatility spike just before the forecast period, reinforcing the tendency of GARCH models to propagate past volatility into future estimates. Additionally, the unexpected jump in volatility on December 31, 2024, which was likely caused by year-end market effects, was not captured by the model, as GARCH assumes that volatility follows historical patterns rather than abrupt structural breaks.
+
+Despite these limitations, GARCH performed better than simpler models like ARIMA. Alternative models, such as FIGARCH and TARCH, showed potential but did not significantly outperform GARCH in our case. This suggests that while GARCH-based models are useful for short-term volatility forecasting, their reliance on past conditional variance makes them susceptible to overestimation when recent volatility has been elevated. 
+
+# **Use of LLMs**
+
+We used large language models (LLMs) primarily for debugging errors, troubleshooting issues in our R code, and understanding functions from R libraries that were not covered in our curriculum. LLMs helped clarify error messages, suggest corrections, and provide explanations for complex functions, which improved our understanding of advanced time-series modeling techniques.
+
+# **Feedback**
+
+\
+When we look back at the project and the comments we received from the peer-review team, we realised that we got a clearer view on how different volatility models behave, when to prefer a simple ARIMA model over a GARCH-type specification, and how to use diagnostic tools such as ADF, Ljung-Box and ARCH tests to justify that choice. We also learned the practical value of comparing models with several criteria (AIC/BIC versus out-of-sample RMSE/MAE). Things we would have done differently are that first, we would spell out---both in the report and in the slide deck---why we fixed the forecasting horizon at thirty days-linking it, for example, to a monthly hedging or budgeting cycle. Second, we would frame the series as NOK/EUR from the outset instead of EUR/NOK. Finally, we would make our conclusion in both the presentation and report more clear and present key takeaways.
